@@ -7,17 +7,23 @@ if sys.argv[0] == "composer":
     frequency = {}
     document_text = open('scorelib.txt',encoding="utf8")
     text_string = document_text.read()
-
-   
-
-    for  lines in re.findall(r'(?<=Composer: )(\S*..\S*..\S*..\S*..\S*..\S*..\S*..\S*..\S*..\S*..\S+|\S*..\S*|\b)', text_string):
-          match_pattern = re.split(r'; ', lines)
     
-    
-          for word in match_pattern:
-               count = frequency.get(word,0)
-               frequency[word] = count + 1
-          frequency_list = frequency.keys() 
+for  lines in re.findall(r'(?<=Composer: )(.*)', text_string):
+    match_pattern = re.split(r'; ', lines)  
+
+    for  lines in match_pattern:
+        if re.findall (r".*\(\d*.*\)$|.*\(\d*.*\) $|.*\(\d*.*\)  $|.*\(\d*.*\)   $|\s*", lines):
+            match_pattern3 = re.findall(r"\S*..\S*..\S*..[a-z]+|\S*..\[a-z]+", lines)
+
+            for lines in match_pattern3:
+                  count = frequency.get(lines,0)
+                  frequency[lines] = count + 1
+            frequency_list = frequency.keys()
+        else:
+            for lines in match_pattern:
+                  count = frequency.get(lines,0)
+                  frequency[lines] = count + 1
+            frequency_list = frequency.keys()
     
    for words in frequency_list:
     

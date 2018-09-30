@@ -25,9 +25,9 @@ for  lines in re.findall(r'(?<=Composer: )(.*)', text_string):
                   frequency[lines] = count + 1
             frequency_list = frequency.keys()
     
-   for words in frequency_list:
+   for lines in frequency_list:
     
-        print (words,':',frequency[words])
+        print (lines,':',frequency[lines])
 
 elif sys.argv[0] == "century":
 

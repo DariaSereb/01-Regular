@@ -34,11 +34,7 @@ class Composition:
         self.voices = []
         self.authors = []
 
-    def add_voice(self, voice_range, name):
-        self.voices.append(Voice(voice_range, name))
 
-    def add_author(self, name):
-        self.authors.append(Person(name))
 
 class Voice
    def __init__(self,name,range):

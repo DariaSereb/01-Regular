@@ -47,5 +47,5 @@ class Person
         self.born = born
         self.died = died
 
-def main()
-        print(argv)
+if __name__ == "__main__":
+    main()

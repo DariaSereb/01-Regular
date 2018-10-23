@@ -1,125 +1,131 @@
-import sys
+#! /usr/bin/python
+
 import sqlite3
-import scorelib as module
-
-def initDb(datFile, schemaFile):
-    schema = open(schemaFile, 'r').read()
-
-    db = sqlite3.connect(datFile)
-    cursor = db.cursor()
-    cursor.executescrint(schema)
-    db.commit()
-
-    return db
+import test
+import sys
 
 
-def insert_Score(composition, cursor):
-    cursor.execute("SELECT * FROM score WHERE name IS ? AND genre IS ? AND key IS ? AND incipit IS ? AND year IS ?", 
-                    (composition.name, composition.genre, composition.key, composition.incipit, composition.year,))
-    match = cursor.fetchone()
+def store_print(cursor, print1, edition_id):
+    partiture = "N"
 
-    if match is None:
-        cursor.execute("INSERT INTO score(name, genre, key, incipit, year) VALUES (?, ?, ?, ?, ?)",
-                        (composition.name, composition.genre, composition.key, composition.incipit, composition.year))
+    if print1.partiture:
+        partiture = "Y"
+    cursor.execute("INSERT INTO print (id, partiture, edition) VALUES (?, ?, ?)",
+                   (print1.print_id, partiture, edition_id))
+
+
+def store_edition_author(cursor, editor_id, edition_id):
+    cursor.execute("INSERT INTO edition_author (editor, edition) VALUES (?, ?)",
+                   (editor_id, edition_id))
+
+
+def store_score_author(cursor, author_id, score_id):
+    cursor.execute("INSERT INTO score_author (composer, score) VALUES (?, ?)",
+                   (author_id, score_id))
+
+
+def store_edition(cursor, edition, score_id):
+    cursor.execute("INSERT INTO edition (score, name, year) VALUES (?, ?, ?)",
+                   (score_id, edition.name, None))
+
+
+def store_voice(cursor, voice, score_id):
+    cursor.execute("INSERT INTO voice (name, range, number, score) VALUES (?, ?, ?, ?)",
+                   (voice.name, voice.range, voice.number, score_id))
+
+
+def store_score(cursor, score):  # 666,667, 694,695, 745,746
+    cursor.execute("SELECT * FROM score WHERE name=?"
+                   " AND genre=? "
+                   "AND key = ? AND "
+                   "(incipit = ? or incipit is null) AND "
+                   "(year = ? or year is null)",
+                   (score.name, score.genre, score.key, score.incipit, score.year))
+    stored = cursor.fetchone()
+
+    if stored is None:
+        cursor.execute("INSERT INTO score (name, genre, key, incipit, year) VALUES (?, ?, ?, ?, ?)",
+                   (score.name, score.genre, score.key, score.incipit, score.year))
+        return cursor.lastrowid
+    return stored[0]
+
+
+def store_author(cursor, person):
+    cursor.execute("SELECT * FROM person WHERE name=?", (person.name,))
+    stored = cursor.fetchone()
+
+    if stored is None:
+        cursor.execute("INSERT INTO person (born, died, name) VALUES (?, ?, ?)",
+                       (person.born, person.died, person.name))
         return cursor.lastrowid
     else:
-        return match[0]
-    
-def Person_insrt(person, cursor):
-    cursor.execute("SELECT * FROM person WHERE name IS ?", (person.name,))
-    match = cursor.fetchone()
+        if stored[1] is None and person.born is not None:
+            cursor.execute("UPDATE person SET born = ? WHERE name = ?",
+                           (person.born, person.name))
 
-    if match is None:
-        cursor.execute("INSERT INTO person(name, born, died) VALUES(?, ?, ?)", (person.name, person.born, person.died))
-        return cursor.lastrowid
-    else:
-        born = match[1]
-        died = match[2]
-
-        if born is None:
-            born = person.born
-        if died is None:
-            died = person.died
-        
-        cursor.execute("UPDATE person SET born=?, died=? WHERE name=?", (born, died, person.name))
-        return match[0]
-    
-def Edition_insrt(edition, scoreId, cursor):
-    cursor.execute("SELECT * FROM edition WHERE score IS ? AND name IS ?", (scoreId, edition.name,))
-    match = cursor.fetchone()
-
-    if match is None:
-        cursor.execute("INSERT INTO edition(score, name, year) VALUES(?, ?, ?)", (scoreId, edition.name, None))
-        return cursor.lastrowid
-    else:
-        return match[0]
-
-def Voice_insrt(voice, scoreId, number, cursor):
-    cursor.execute("SELECT * FROM voice WHERE number IS ? AND score IS ? AND range IS ? AND name IS ?",
-                    (number, scoreId, (voice.range if voice is not None else None), (voice.name if voice is not None else None)))
-    match = cursor.fetchone()
-
-    if match is None:
-        cursor.execute("INSERT INTO voice(number, score, range, name) VALUES(?, ?, ?, ?)", 
-                        (number, scoreId, (voice.range if voice is not None else None), (voice.name if voice is not None else None)))
-
-def Edition_insrt(editionId, editorId, cursor):
-    cursor.execute("SELECT * FROM edition_author WHERE edition IS ? AND editor IS ?", (editionId, editorId,))
-    match = cursor.fetchone()
-
-    if match is None:
-        cursor.execute("INSERT INTO edition_author(edition, editor) VALUES(?, ?)", (editionId, editorId))
-
-def Author_insrt(scoreId, composerId, cursor):
-    cursor.execute("SELECT * FROM score_author WHERE score IS ? AND composer IS ?", (scoreId, composerId,))
-    match = cursor.fetchone()
-
-    if match is None:
-        cursor.execute("INSERT INTO score_author(score, composer) VALUES(?, ?)", (scoreId, composerId))
-
-def PrintID_insrt(print, editionId, cursor):
-    cursor.execute("SELECT * FROM print WHERE id IS ? AND partiture IS ? AND edition IS ?", (print.print_id, print.partiture, editionId))
-    match = cursor.fetchone()
-
-    if match is None:
-        cursor.execute("INSERT INTO print(id, partiture, edition) VALUES(?, ?, ?)", (print.print_id, print.partiture, editionId))
+        if stored[2] is None and person.died is not None:
+            cursor.execute("UPDATE person SET died = ? WHERE name = ?",
+                           (person.died, person.name))
+        return stored[0]
 
 
-        
-def Data_insrt(prints,db):
-    cursor = db.cursor()
-    composerIds = []
-    editorIds = []
-
-    for p in prints:
-        for composer in p.composition().authors:
-            composerIds.append(Person_instr(composer,cursor))
-        for editor in p.edition.authors:
-            editorsIds.append(Person_instr(editor, cursor))
-
-        scoreId = insertScore(p.composition(), cursor)
-        
-        for i, voice in enumerate(p.composition().voices):
-            Voice_instr(voice, scoreId, i+1, cursor)
-        for composerId in composerIds:
-            Score_instr(scoreId, composerId, cursor)
-
-        editionId = Edition_instr(p.edition, scoreId, cursor)
-        
-        for editorId in editorIds:
-            Author_instr(editionId, editorId, cursor)
-
-        PrintID_instr(p, editionId, cursor)
-        composerIds = []
-        editorIds = []
-
-        
 def main():
-    
-    db = initDb(sys.argv[2], "scorelib.sql")
-    Data_instr(module.load(sys.argv[1]), db)
-    db.commit()
-    db.close()
+    filename = sys.argv[1]
+    database = sys.argv[2]
 
-if __name__ == "__main__":
-    main()
+    conn = sqlite3.connect(database)
+    f = open('./scorelib.sql', 'r').read()
+    c = conn.cursor()
+    prints = test.main(filename)
+
+    for print1 in prints:
+
+        editors = []
+
+        for author in print1.edition.authors:
+            c = conn.cursor()
+            editors.append(store_author(c, author))
+            conn.commit()
+
+        authors = []
+
+        for author in print1.edition.composition.authors:
+            c = conn.cursor()
+            authors.append(store_author(c, author))
+            conn.commit()
+
+        c = conn.cursor()
+        score = store_score(c, print1.edition.composition)
+        conn.commit()
+
+        for voice in print1.edition.composition.voices:
+            c = conn.cursor()
+            store_voice(c, voice, score)
+        conn.commit()
+
+        c = conn.cursor()
+        store_edition(c, print1.edition, score)
+        edition_id = c.lastrowid
+        conn.commit()
+
+        c = conn.cursor()
+
+        for author in authors:
+            store_score_author(c, author, score)
+        conn.commit()
+
+        c = conn.cursor()
+
+        for editor in editors:
+            store_edition_author(c, editor, edition_id)
+        conn.commit()
+
+        c = conn.cursor()
+        store_print(c, print1, edition_id)
+        conn.commit()
+
+    c.close()
+    conn.close()
+
+
+

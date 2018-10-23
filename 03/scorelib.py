@@ -160,10 +160,7 @@ class Voice:
         self.range = range
         self.number = None
 
-    def check_range(self):
-        if self.range and self.range.count("-") == 1:
-            position = self.range.find("-")
-            self.range = self.range[:position] + "-" + self.range[position:]
+    
 
 
 

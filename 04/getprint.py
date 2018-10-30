@@ -7,6 +7,7 @@ import sqlite3
 
 
 def main():
+    
     print_number = argv[1]
     connect_DB = sqlite3.connect("scorelib.dat")
     cursor_DB = connect_DB.cursor()
@@ -17,6 +18,7 @@ def main():
         WHERE print.id = ?""",
         (print_number,)
     ).fetchall()
+    
     if not score:
         return
     else:
@@ -28,8 +30,10 @@ def main():
         (score,)
     ).fetchall()
     composers = []
+    
     for composer in composers_DB:
         person = {}
+        
         if composer[0]:
             person['name'] = composer[0]
         if composer[1]:

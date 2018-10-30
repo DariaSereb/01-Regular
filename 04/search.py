@@ -6,10 +6,12 @@ import sqlite3
 
 
 def main():
+    
     connect_DB = sqlite3.connect("scorelib.dat")
     cursor_DB = connect_DB.cursor()
     composer_name_w = '%' + argv[1] + '%'
     composers = dict()
+    
     composer_id_w = cursor_DB.execute(
         """SELECT DISTINCT person.id, person.name FROM print
         JOIN edition ON print.edition = edition.id

@@ -1,85 +1,87 @@
-#!/usr/bin/env python
-
 import sys
 import numpy as np
 
-Matrix_l = []
-Matrix_r = []
-array_line = []
-file_used = []
+left_Matrix = []
+right_Matrix = []
+Arr_line = []
+used_file = []
 
-file = open(sys.argv[1], "r")
-
-def file_used1(file):
-    file = open(sys.argv[1], "r")
-    lineCounter = 0
+def used_fileFun(file):
+    line_counter = 0
 
     for line in file:
-       array_line.append(line)
+       Arr_line.append(line)
 
        for letter in line:
            if letter.isalpha()== True:
+               if letter not in used_file: used_file.append(letter)
+       line_counter = line_counter + 1
 
-               if letter not in file_used: file_used.append(letter)
-
-       lineCounter = lineCounter + 1
-
-    return file_used
+    return used_file
 
 
-file_used = file_used1(file)
 
+file = open(sys.argv[1], "r")
 
+used_file = used_fileFun(open(sys.argv[1], "r"))
 for line in file:
-   coefficient_array = []
+   arr_coefficient = []
 
-   for letter in file_used:
-       coefficient_array.append(0)
-
+   for letter in used_file:
+       arr_coefficient.append(0)
    line_split = (line.split("="))
    line_split[1] = line_split[1].strip("\n")
    constant = int(line_split[1].strip(" "))
 
    for index, letter in enumerate(line_split[0]):
-
         if (letter.isalpha() == True):
-            coefficient = line_split[0][index-1]
+            i = -1
+            coeffic = ""
+            negate = False
+            while True:
+                curPos = line_split[0][index+i]
+                if curPos == "" or curPos == "-" or curPos== " ":
+                    if line_split[0][index+i-1] == "-": negate = True
+                    break
+                else:
+                    coeffic =  curPos + coeffic
+                i = i - 1
+            if letter != line_split[0][index]: arr_coefficient.append(0)
+            if coeffic == " " or coeffic == "": coeffic = 1
+            if coeffic == "-": coeffic = -1
 
-            if letter != line_split[0][index]: coefficient_array.append(0)
-            if coefficient == " ": coefficient = 1 
-            if coefficient == "": coefficient = 1
-            else: coefficient = int(coefficient)
+            else: coeffic = int(coeffic)
 
-            if line_split[0][index-2] == "-": coefficient = coefficient * -1
-            for index1, variables in enumerate(file_used):
-                if variables == line_split[0][index]: coefficient_array[index1] =(coefficient)
+            if negate == True:
+                coeffic = str(coeffic)
+                coeffic = "-" + coeffic
+                coeffic = int(coeffic)
+            for index2, alfa in enumerate(used_file):
 
-   Matrix_l.append(coefficient_array)
-   Matrix_r.append(constant)
+                if alfa == line_split[0][index]: arr_coefficient[index2] = (coeffic)
+   left_Matrix.append(arr_coefficient)
+   right_Matrix.append(constant)
 
-Matrix_l2 = np.array(Matrix_l)
-Matrix_r2 = np.array(Matrix_r)
+left_MatrixN = np.array(left_Matrix)
+right_MatrixN = np.array(right_Matrix)
+matrixRank = np.linalg.matrix_rank(left_MatrixN)
+right_MatrixN = (np.expand_dims(right_MatrixN, axis=1))
 
-matrix_Rank = np.linalg.matrix_rank(Matrix_l2)
-Matrix_r2 = (np.expand_dims(Matrix_r2, axis=1))
-extendedMatrix = (np.hstack((Matrix_l2, Matrix_r2)))
-
+extended_matr = (np.hstack((left_MatrixN, right_MatrixN)))
 
 try:
-    results = np.linalg.solve(Matrix_l, Matrix_r)
+    results = np.linalg.solve(left_Matrix, right_Matrix)
     resultStr = "solution: "
-
     for index, item in enumerate(results):
-        resultStr = resultStr + (file_used[index] + "=" + str(item) + ", ")
+        resultStr = resultStr + (used_file[index] + " = " + str(item) + ", ")
     resultStr = resultStr.strip(", ")
     print(resultStr)
 
 except:
 
-    if len(file_used) != len(Matrix_l2):
-            spaceDim = len(file_used) - len(Matrix_l2)
+    if len(used_file) != len(left_MatrixN):
+            spaceDim = len(used_file) - len(left_MatrixN)
             print("solution space dimension: " + str(spaceDim))
 
-    if np.linalg.matrix_rank(extendedMatrix) != matrix_Rank:
-
-            print("no solution")
+    if np.linalg.matrix_rank(extended_matr) != matrixRank:
+         print("no solution")

@@ -89,17 +89,16 @@ def hz_to_tone(freq, A4):
     C0 = A4 * pow(2, -(12*4 + 9)/12)
     steps = round(12 * log2(freq / C0))
     octave = steps // 12
-
-
     tone = name[steps % 12]
+    cents = round(((12 * log2(freq / C0)) % 1) * 100)
+
     if octave < 3:
         tone = tone.title()
         tone += (2 - octave) * ','
     else:
         tone += (octave - 3) * '\''
-
    
-    cents = round(((12 * log2(freq / C0)) % 1) * 100)
+
     if cents > 50:
         tone += "-{}".format(100 - cents)
     else:
@@ -114,13 +113,13 @@ for t, window in enumerate(windows_r(input_file), start=0):
     peaks = get_peaks(window)
     peaks = cluster_of_peaks(peaks)
     peaks.sort(key=lambda x: x[1])
-    max_3 = list(map(lambda x: x[0], peaks[-3:]))
-    max_3.sort()
+    max_3_peaks = list(map(lambda x: x[0], peaks[-3:]))
+    max_3_peaks.sort()
 
-    if max_3 != max_3_prev:
+    if max_3_peaks != max_3_prev:
         if max_3_prev:
             print("{}-{} {}".format(t_prev/10, t/10, " ".join(map(lambda x: hz_to_tone(x, A4), max_3_prev))))
-        max_3_prev = max_3
+        max_3_prev = max_3_peaks
         t_prev = t
 
 if max_3_prev:

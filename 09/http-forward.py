@@ -61,7 +61,7 @@ def make_forward_handler(upstream_url):
         def do_POST(self):
 
             req_content_legth = int(self.headers['Content-Length'])
-            req_body = self.rfile.read(req_content_legth)
+            req_body = self.rfile.read(req_content_legth).decode('utf-8')
             json_string = {}
 
             try:
@@ -75,9 +75,6 @@ def make_forward_handler(upstream_url):
                     json_string['code'] = 'invalid json'
                 else:
                     if reques['type'] == 'POST':
-
-                        headers = reques['headers']
-                        headers['Accept-Encoding'] = 'identity'                        
 
                         data = urlencode(reques['content']).encode('utf-8')
 

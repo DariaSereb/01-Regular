@@ -1,94 +1,78 @@
-import re
-import string
 import sys
+import re
+from collections import Counter
 
 
+def search_composers(composer_line):
+    line = re.sub('\(.*\)', "", composer_line)
+    comp_line = line.split(';')
+    results = []
+    for composer in comp_line:
+        composer = comp.strip()
+        if not composer:
+            continue
+        else:
+            results.append(composer)
+    return results
+
+def search_centuries(century_line, century_regex, year_regex):
+
+    results = []
+
+    if not century_line:
+        return None
+
+    match = re.search(century_regex, century_line)
+    if match is not None:
+        return match.group(0) + ' century'
+
+    match = re.search(year_regex, century_line)
+    if match is not None:
+        year = int(match.group(0))
+        century = year_to_century(year)
+        return century + 'th century'
+
+def main(input, type):
+
+    results = []
+
+    composer_text = 'Composer:'
+    century_text = 'Composition Year:'
+
+    century_regex = re.compile('\d\dth')
+    year_regex = re.compile('\d\d\d\d')
+
+    with open(input, 'r') as ins:
+        if type == 'composer':
+            for line in ins:
+                if composer_text in line:
+                    line = line[len(composer_text):]
+                    composers = search_composers(line)
+                    results.extend(composers)
+
+        elif type == 'century':
+            for line in ins:
+                if century_text in line:
+                    line = line[len(century_text):].strip()
+                    centuries = search_centuries(line, century_regex, year_regex)
+                    results.append(centuries)
 
 
+    results = [r for r in results if r is not None]
+    results_counter = Counter(results)
+    print_results(results_counter)
 
-if sys.argv[1] == "composer":
-    
-    frequency = {}
-    document_text = open('scorelib.txt',encoding="utf8")
-    text_string = document_text.read()
-    
-    for  lines in re.findall(r'(?<=Composer: )(.*)', text_string):
-         match_pattern = re.split(r'; ', lines)
-         for  lines in match_pattern:
-             if re.findall (r".*\(\d*.*\)$|.*\(\d*.*\) $|.*\(\d*.*\)  $|.*\(\d*.*\)   $|\s*", lines):
-                 match_pattern3 = re.findall(r"\S*..\S*..\S*..[a-z]+|\S*..\[a-z]+", lines)
+def year_to_century(year):
+    century = year // 100
+    if year % 100 > 0:
+        century += 1
+    return str(century)
 
-                 for lines in match_pattern3:
-                     count = frequency.get(lines,0)
-                     frequency[lines] = count + 1
-                     frequency_list = frequency.keys()
-             else:
-                 for lines in match_pattern:
-                     count = frequency.get(lines,0)
-                     frequency[lines] = count + 1
-    frequency_list = frequency.keys()
-    
-    for lines in frequency_list:
-    
-        print (lines,':',frequency[lines])
+def print_results(results):
+    for key in results:
+        print("%s: %s" % (key, results[key]))
 
-        
-
-if sys.argv[1] == "century":
-
-    frequency = {}
-    document_text = open('scorelib.txt',encoding="utf8")
-    text_string = document_text.read()
-    match_pattern = re.findall(r'(?<=Composition Year: 15\d{2})', text_string)
-
-    for word in match_pattern:
-      count = frequency.get(word,0)
-      frequency[word] = count + 1
-
- 
-    frequency_list = frequency.keys()
-    for words in frequency_list:
-   
-       print ('16th century:',frequency[words])
-
-    frequency.clear()
-
-    match_pattern = re.findall(r'(?<=Composition Year: 16\d{2})', text_string)
-    match_pattern2 = re.findall(r'(?<=Composition Year: 17th)', text_string)
-
-    for word in match_pattern:
-       count = frequency.get(word,0)
-       frequency[word] = count + 1
-    for word in match_pattern2:
-       count = frequency.get(word,0)
-       frequency[word] = count + 1
-
- 
-    frequency_list = frequency.keys()
-    
-    for words in frequency_list:
-   
-       print ('17th century:',frequency[words])
-     
-    frequency.clear()
-
-    match_pattern = re.findall(r'(?<=Composition Year: 17\d{2})', text_string)
-    match_pattern2 = re.findall(r'(?<=Composition Year: 18th)', text_string)
-
-    for word in match_pattern:
-       count = frequency.get(word,0)
-       frequency[word] = count + 1
-    for word in match_pattern2:
-       count = frequency.get(word,0)
-       frequency[word] = count + 1
-
- 
-    frequency_list = frequency.keys()
-    
-    for words in frequency_list:
-   
-       print ('18th century:',frequency[words])
-
-    frequency.clear()
-
-
+if __name__ == '__main__':
+    input = sys.argv[1]
+    type = sys.argv[2]
+main(input, type)

@@ -1,5 +1,3 @@
-from sys import argv
-import request
 import os
 import json
 import socket
@@ -7,7 +5,6 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-
 
 def handler(upstream_url):
     class ForwardHTTPRequestHandler(BaseHTTPRequestHandler):
@@ -96,16 +93,3 @@ def handler(upstream_url):
 
 
     return ForwardHTTPRequestHandler
-
-
-if __name__ == '__main__':
-    port = int(argv[1])
-    upstream = argv[2]
-
-    if (not upstream.startswith('http://')
-        and not upstream.startswith('https://')):
-        upstream = 'http://' + upstream
-
-    Handler = handler(upstream_url)
-    httpd = HTTPServer(('', port), Handler)
-httpd.serve_forever()

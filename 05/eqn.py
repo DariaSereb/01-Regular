@@ -1,87 +1,105 @@
-import sys
+from sys import argv
 import numpy as np
+from numpy import linalg
 
-left_Matrix = []
-right_Matrix = []
-Arr_line = []
-used_file = []
+def to_matrix(eqns, varbs):
 
-def used_fileFun(file):
-    line_counter = 0
+    matrix = []
+    vec = []
+    for eqn in eqns:
+        matrix_row = []
+        for var in varbs:
+            if var in eqn:
+                matrix_row.append(eqn[var])
+            else:
+                matrix_row.append(0)
+        vec.append(eqn['result'])
+        matrix.append(matrix_row)
 
-    for line in file:
-       Arr_line.append(line)
+    return np.array(matrix), np.array(vec)
 
-       for letter in line:
-           if letter.isalpha()== True:
-               if letter not in used_file: used_file.append(letter)
-       line_counter = line_counter + 1
+def parse_line(line):
 
-    return used_file
+    eqn = {}
+    varbs = []
+    sign = 1
+    result = False
+
+    for char in line.split():
+
+        if char == '+':
+            sign = 1
+        elif char == '-':
+            sign = -1
+        elif char == '=':
+            result = True
+        elif result:
+            eqn['result'] = int(char)
+        else:
+            koef = sign
+            var_name = char[-1]
+            varbs.append(var_name)
+            if len(char) > 1:
+                koef = sign * int(char[:-1])
+            eqn[var_name] = koef
+
+    return eqn, varbs
+
+def solve(matrix, vector, varbs):
+    res = linalg.solve(matrix, vector)
+    solution = {}
+    for i in range(0, len(varbs)):
+        solution[varbs[i]] = res[i]
+
+    return solution
+
+def frobein(matrix, vector):
+
+    n = vector.shape[0]
+    vector = np.reshape(vector, (n,1))
+
+    augmented = np.append(matrix, vector, 1)
+
+    rank_a = linalg.matrix_rank(augmented)
+    rank_b = linalg.matrix_rank(matrix)
+
+    if rank_a != rank_b:
+        return -1
+
+    if rank_b == matrix.shape[1]:
+        return 0
+
+    return matrix.shape[1] - rank_b
 
 
 
-file = open(sys.argv[1], "r")
 
-used_file = used_fileFun(open(sys.argv[1], "r"))
-for line in file:
-   arr_coefficient = []
+if __name__ == '__main__':
 
-   for letter in used_file:
-       arr_coefficient.append(0)
-   line_split = (line.split("="))
-   line_split[1] = line_split[1].strip("\n")
-   constant = int(line_split[1].strip(" "))
+    input = argv[1]
+    eq_system = []
+    varbs = []
 
-   for index, letter in enumerate(line_split[0]):
-        if (letter.isalpha() == True):
-            i = -1
-            coeffic = ""
-            negate = False
-            while True:
-                curPos = line_split[0][index+i]
-                if curPos == "" or curPos == "-" or curPos== " ":
-                    if line_split[0][index+i-1] == "-": negate = True
-                    break
-                else:
-                    coeffic =  curPos + coeffic
-                i = i - 1
-            if letter != line_split[0][index]: arr_coefficient.append(0)
-            if coeffic == " " or coeffic == "": coeffic = 1
-            if coeffic == "-": coeffic = -1
+    with open(input, 'r') as lines:
+        for line in lines:
+            eqn, vars = parse_line(line)
+            eq_system.append(eqn)
+            varbs = list(set(vars + varbs))
 
-            else: coeffic = int(coeffic)
+    matrix, vector = to_matrix(eq_system, varbs)
+    num_sol = frobein(matrix, vector)
 
-            if negate == True:
-                coeffic = str(coeffic)
-                coeffic = "-" + coeffic
-                coeffic = int(coeffic)
-            for index2, alfa in enumerate(used_file):
+    if num_sol == -1:
+        print('no solution')
 
-                if alfa == line_split[0][index]: arr_coefficient[index2] = (coeffic)
-   left_Matrix.append(arr_coefficient)
-   right_Matrix.append(constant)
+    elif num_sol == 0:
 
-left_MatrixN = np.array(left_Matrix)
-right_MatrixN = np.array(right_Matrix)
-matrixRank = np.linalg.matrix_rank(left_MatrixN)
-right_MatrixN = (np.expand_dims(right_MatrixN, axis=1))
+        solution = solve(matrix, vector, varbs)
+        solution_string = "solution:"
 
-extended_matr = (np.hstack((left_MatrixN, right_MatrixN)))
+        for key, value in sorted(solution.items(), key=lambda x: x[0]):
+            solution_string += " " + str(key) + " = " + str(value) + ","
+        print(solution_string[:-1])
 
-try:
-    results = np.linalg.solve(left_Matrix, right_Matrix)
-    resultStr = "solution: "
-    for index, item in enumerate(results):
-        resultStr = resultStr + (used_file[index] + " = " + str(item) + ", ")
-    resultStr = resultStr.strip(", ")
-    print(resultStr)
-
-except:
-
-    if len(used_file) != len(left_MatrixN):
-            spaceDim = len(used_file) - len(left_MatrixN)
-            print("solution space dimension: " + str(spaceDim))
-
-    if np.linalg.matrix_rank(extended_matr) != matrixRank:
-         print("no solution")
+    else:
+        print('solution space dimension:', num_sol)

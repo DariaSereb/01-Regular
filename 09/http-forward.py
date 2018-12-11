@@ -1,111 +1,90 @@
-from sys import argv
-import request
-import os
 import json
-import socket
+from sys import argv
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.request import Request, urlopen
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib import request
 
 
-def handler(upstream_url):
-    class ForwardHTTPRequestHandler(BaseHTTPRequestHandler):
+class Handler(BaseHTTPRequestHandler):
 
-        def __init__(self, *args, **kwargs):
-            super(ForwardHTTPRequestHandler, self).__init__(*args, **kwargs)
+    def do_POST(self):
+        length = int(self.headers.get('content-length'))
+        try:
+            data = json.loads(self.rfile.read(length))
+            type = data['type'] if 'type' in data else 'GET'
+            url = data['url']
+            headers = data['headers'] if 'headers' in data else dict()
+            headers['Accept-Encoding'] = 'identity'
+            if 'content-type' not in (header.lower() for header in headers):
+                headers['Content-Type'] = 'application/json; charset=utf-8'
+            cont = data['content'] if type == 'POST' else None
+            if cont:
+                cont = json.dumps(cont).encode('utf-8')
+            timeout = data['timeout'] if 'timeout' in data else 1
+
+            req = request.Request(method=type, url=url, headers=headers, data=cont)
+
+        except:
+            return self.send({'code': 'invalid json'})
+
+        try:
+            with request.urlopen(req, timeout=timeout) as response:
+                res_content = response.read()
+                res_content = res_content.decode('utf-8')
+
+            new_response = self.prepare_response(response.code, response.getheaders(), res_content)
+            self.send(new_response)
+        except:
+            self.send({'code': 'timeout'})
 
 
+    def do_GET(self):
+        r_headers = self.headers
+        r_headers['Accept-Encoding'] = 'identity'
 
-        def send_request(self, url, headers, data=None, timeout=1):
-            json = {}
-            request_1 = Request(url, headers=headers, data=data)
+        del r_headers['Host']
+        upstr = argv[2]
+
+        if not upstr.startswith('http://') and not upstr.startswith('https://'):
+            upstr = 'http://' + upstr
+        req = request.Request(method='GET', url=upstr, headers=r_headers)
+
+        with request.urlopen(req, timeout=1) as response:
+            res_content = response.read()
+            res_content = res_content.decode('utf-8')
             try:
-                result = urlopen(request_1, timeout=timeout)
-            except HTTPError as http_error:
-                json['code'] = http_error.code
-                json['headers'] = dict(http_error.headers)
-            except URLError as url_error:
-                print(url_error)
-                raise
-            except socket.timeout:
-                json['code'] = 'timeout'
-            else:
-                json['code'] = result.getcode()
-                json['headers'] = dict(result.getheaders())
-                data1 = result.read()
-                try:
-                    result_data_json = json.loads(data1)
-                except:
-                    json['content'] = str(data1)
-                else:
-                    json['json'] = result_data_json
-            return json
-
-
-
-
-        def do_GET(self):
-            url = upstream_url + self.path
-            headers = {}
-            for key in self.headers:
-                headers[key] = self.headers[key]
-
-            json = self.send_request(url, headers)
-            result_content = bytes(json.dumps(json,indent=4,sort_keys=False,ensure_ascii=False), 'utf-8')
-            self.send_response(200, 'OK')
-            self.send_header('Connection', 'close')
-            self.send_header('Content-Type', 'text/json; charset=utf-8')
-            self.end_headers()
-            self.wfile.write(result_content)
-
-
-
-
-
-        def do_POST(self):
-            request_legth = int(self.headers['Content-Length'])
-            request_b = self.rfile.read(request_legth).decode('utf-8')
-            json = {}
-            try:
-                request_1 = json.loads(request_b)
+                new_response = self.prepare_response(200, response.getheaders(), res_content)
+                self.send(new_response)
             except:
-                json['code'] = 'invalid json'
-            else:
-                if (request_1['url'] is None or
-                    (request_1['type'] == 'POST' and
-                     request_1['content'] is None)):
-                    json['code'] = 'invalid json'
-                else:
-                    if request_1['type'] == 'POST':
-                        headers = request_1['headers']
-                        headers['Accept-Encoding'] = 'identity'
-                        data = urlencode(request_1['content']).encode('utf-8')
-                    else:
-                        headers = request_1['headers']
-
-                    req_timeout = int(request_1['timeout']) if request_1['timeout'] else 1
-                    json = self.send_request(request_1['url'], headers, data, req_timeout)
-            result_content = bytes(json.dumps(json,indent=4,sort_keys=False,ensure_ascii=False), 'utf-8')
-
-            self.send_response(200, 'OK')
-            self.send_header('Connection', 'close')
-            self.send_header('Content-Type', 'text/json; charset=utf-8')
-            self.end_headers()
-            self.wfile.write(result_content)
+                self.send({'code': 'timeout'})
 
 
-    return ForwardHTTPRequestHandler
+
+    def prepare_response(self, status_code, headers, cont):
+        response = {'code': status_code}
+
+        if headers:
+            response['headers'] = {}
+            for header in headers:
+                response['headers'][header[0]] = header[1]
+
+        if cont:
+            try:
+                response['json'] = json.loads(cont)
+            except:
+                response['content'] = cont
+
+        return response
+
+    def send(self, response):
+        cont = json.dumps(response, indent=4)
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(cont)))
+        self.end_headers()
+        self.wfile.write(bytes(cont, 'UTF-8'))
 
 
-if __name__ == '__main__':
-    port = int(argv[1])
-    upstream = argv[2]
+port = int(argv[1])
+server = HTTPServer(('', port), Handler)
+server.serve_forever()
 
-    if (not upstream.startswith('http://')
-        and not upstream.startswith('https://')):
-        upstream = 'http://' + upstream
-
-    Handler = handler(upstream_url)
-    httpd = HTTPServer(('', port), Handler)
-httpd.serve_forever()

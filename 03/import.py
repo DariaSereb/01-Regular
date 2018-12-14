@@ -1,4 +1,4 @@
-import utils
+import loads
 import sqlite3
 import traceback
 from sys import argv
@@ -15,7 +15,7 @@ if __name__ == '__main__':
     try:
         conn = sqlite3.connect(output)
         conn.executescript(script)
-        utils.load(input, conn)
+        loads.load(input, conn)
         conn.commit()
 
 

@@ -1,23 +1,3 @@
-class Edition:
-    def __init__(self, composition, authors, name):
-        self.composition = composition
-        self.authors = authors
-        self.name = name
-
-    def main_1(self, conn, score_id):
-        curs = conn.cursor()
-        curs.execute('''INSERT INTO edition (score, name, year) VALUES (?, ?, ?)''',
-                    (score_id, self.name, None))
-        edition_id = curs.lastrowid
-
-        for author_id in self.authors:
-            curs = conn.cursor()
-            curs.execute('''INSERT INTO edition_author (edition, editor) VALUES (?, ?)''',
-                        (edition_id, author_id))
-
-        return edition_id
-
-
 class Print:
     def __init__(self, edition, print_id, partiture):
         self.edition = edition
@@ -27,31 +7,20 @@ class Print:
     def composition(self):
         return self.edition.composition
 
-    def main_1(self, conn, edition_id):
+    def store(self, conn, edition_id):
         curs = conn.cursor()
+
         partiture = 'Y' if self.partiture else 'N'
         curs.execute('''INSERT INTO print (id, partiture, edition) VALUES (?, ?, ?)''',
                     (self.print_id, partiture, edition_id))
-
-class Voice:
-    def __init__(self, name, range, number):
-        self.name = name
-        self.range = range
-        self.number = number
-
-    def main_1(self, conn, ref_id):
-        curs = conn.cursor()
-        curs.execute("INSERT INTO voice (score, number, range, name) VALUES (?, ?, ?, ?)",
-                    (ref_id, self.number, self.range, self.name))
-
 class Person:
-
     def __init__(self, name, born=None, died=None):
         self.name = name
         self.born = born
         self.died = died
 
-    def main_1(self, conn):
+    def store(self, conn):
+
         if self.name == "":
             return None
 
@@ -79,10 +48,41 @@ class Person:
 
             curs.execute("UPDATE person SET born = ?, died = ? WHERE id = ?",
                         (new_born, new_died, id))
-            return id
+            return idf
+
+class Edition:
+    def __init__(self, composition, authors, name):
+        self.composition = composition
+        self.authors = authors
+        self.name = name
+
+    def store(self, conn, score_id):
+        curs = conn.cursor()
+
+        curs.execute('''INSERT INTO edition (score, name, year) VALUES (?, ?, ?)''',
+                    (score_id, self.name, None))
+        edition_id = curs.lastrowid
+
+        for author_id in self.authors:
+            curs = conn.cursor()
+            curs.execute('''INSERT INTO edition_author (edition, editor) VALUES (?, ?)''',
+                        (edition_id, author_id))
+
+        return edition_id
+
+class Voice:
+    def __init__(self, name, range, number):
+        self.name = name
+        self.range = range
+        self.number = number
+
+    def store(self, conn, ref_id):
+        curs = conn.cursor()
+
+        curs.execute("INSERT INTO voice (score, number, range, name) VALUES (?, ?, ?, ?)",
+                    (ref_id, self.number, self.range, self.name))
 
 class Composition:
-
     def __init__(self, name, incipit, key, genre, year, voices, authors):
         self.name = name
         self.incipit = incipit
@@ -92,7 +92,7 @@ class Composition:
         self.voices = voices
         self.authors = authors
 
-    def do_main(self, conn):
+    def do_store(self, conn):
         curs = conn.cursor()
         curs.execute('''INSERT INTO score (name, genre, key, incipit, year)
                     VALUES (?, ?, ?, ?, ?) ''',
@@ -100,13 +100,15 @@ class Composition:
         id = curs.lastrowid
 
         for voice in self.voices:
-            voice.main_1(conn, id)
+            voice.store(conn, id)
 
         for author_id in self.authors:
 
-            curs = conn.cursor()
-            curs.execute('''INSERT INTO score_author (score, composer) VALUES (?, ?)''',
+            cur = conn.cursor()
+            cur.execute('''INSERT INTO score_author (score, composer) VALUES (?, ?)''',
                         (id, author_id))
+
+
         return id
 
     def check_voices(self, conn, ref_id):
@@ -157,26 +159,27 @@ class Composition:
 
         return False
 
-    def main_1(self, conn):
+    def store(self, conn):
         curs = conn.cursor()
-        curs_1 = "SELECT * FROM score WHERE name = ?"
+
+        query = "SELECT * FROM score WHERE name = ?"
         values = [self.name]
 
         if self.genre is not None:
-            curs_1 += "AND genre = ?"
+            query += "AND genre = ?"
             values.append(self.genre)
         if self.key is not None:
-            curs_1 += "AND key = ?"
+            query += "AND key = ?"
             values.append(self.key)
         if self.incipit is not None:
-            curs_1 += "AND incipit = ?"
+            query += "AND incipit = ?"
             values.append(self.incipit)
 
-        curs.execute(curs_1,tuple(values))
+        curs.execute(query,tuple(values))
         rows = curs.fetchall()
 
         if len(rows) == 0:
-            return self.do_main(conn)
+            return self.do_store(conn)
 
         else:
             author_id = self.check_authors(conn, rows)
@@ -185,5 +188,5 @@ class Composition:
                 return author_id
 
             else:
-                return self.do_main(conn)
+                return self.do_store(conn)
 

@@ -3,12 +3,12 @@ import re
 from collections import Counter
 
 
-def search_composers(composer_line):
-    line = re.sub('\(.*\)', "", composer_line)
+def search_composers(comp_line):
+    line = re.sub('\(.*\)', "", comp_line)
     comp_line = line.split(';')
     results = []
     for composer in comp_line:
-        composer = comp.strip()
+        composer = composer.strip()
         if not composer:
             continue
         else:

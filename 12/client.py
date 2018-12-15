@@ -62,9 +62,9 @@ async def draw_board():
         for i in range(0, len(game_inf.board)):
             for j in range(0, len(game_inf.board[0])):
                 if game_inf.board[i][j] == 1:
-                    print('X', end='')
+                    print('x', end='')
                 elif game_inf.board[i][j] == 2:
-                    print('O', end='')
+                    print('o', end='')
                 else:
                     print('_', end='')
             print(end='\n')
@@ -226,9 +226,9 @@ async def text_loop():
                         game_inf.reset_game()
                     elif game_inf.next_player == game_inf.selected_player:
                         if game_inf.selected_player == 1:
-                            game_symbol = 'X'
+                            game_symbol = 'x'
                         else:
-                            game_symbol = 'O'
+                            game_symbol = 'o'
                         input_string = input('your turn (' + game_symbol + ')')
                         array = input_string.split(' ')
                         if len(array) == 2:

@@ -1,160 +1,206 @@
-import re
-import json
-import socket
-import http.client
-from http import HTTPStatus
-from urllib import parse
-from urllib import request as rq
-from urllib.error import HTTPError, URLError
-from socketserver import ThreadingMixIn
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from sys import argv
+#!/usr/bin/python3
+
+import sys
+import asyncio
+from aiohttp import web
 
 
-class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
-    pass
+class game_run:
 
+    def __init__(self):
+        self.games = {}
 
-class TicTacToeHandler(BaseHTTPRequestHandler):
-    """handle TicTacToe"""
- 
-    mimetype = 'application/json'
-    games = dict()
-    index = -1 
-
-    def do_GET(self):
-        url = self.path
-        print(url)
-
-        mode, params = url.split('?')
-        mode = re.sub('^\W*', '', mode)  
-        params = parse.parse_qs(params)  
-        try:
-            request = getattr(self, mode) 
-            request(params)
-        except AttributeError:
-            self.send_error(HTTPStatus.BAD_REQUEST, f"Asking for a non-existent request '{mode}'.")
-
-    def start(self, params):
-        try:
-            if 'name' not in params:
-                raise KeyError
-            name = params['name'][0]
-            new_game = {'name': name,
-                        'board': [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
-                        'next': 1,
-                        'winner': None}
-            TicTacToeHandler.index += 1  
-            TicTacToeHandler.games[TicTacToeHandler.index] = new_game
-            self.send_response(HTTPStatus.OK)
-            self.send_header('Content-type', self.mimetype)
-            self.end_headers()
-            self.wfile.write(bytes(json.dumps({'id': TicTacToeHandler.index}), 'utf-8'))
-        except KeyError:
-            self.send_error(HTTPStatus.BAD_REQUEST, "Unknown parameter, expecting 'name'.")
-
-    def status(self, params):
-        try:
-            if 'game' not in params:
-                raise KeyError
-            try:
-                idx = int(params['game'][0])
-                game = self.games[idx]
-                self.send_response(HTTPStatus.OK)
-                self.send_header('Content-type', self.mimetype)
-                self.end_headers()
-                if game['winner']:
-                    result = {'winner': game['winner']}
-                else:
-                    result = {'board': game['board'], 'next': game['next']}
-                self.wfile.write(bytes(json.dumps(result), 'utf-8'))
-            except ValueError:
-                self.send_error(HTTPStatus.BAD_REQUEST, "The game parameter expects its value ID to be numeric.")
-            except (KeyError, IndexError):
-                self.send_error(HTTPStatus.BAD_REQUEST, "Entered an ID of a non-existent game.")
-        except KeyError:
-            self.send_error(HTTPStatus.BAD_REQUEST, "Unknown parameter, expecting 'game'.")
-    def decide_winner(board):
-        """Who won"""
-
-        for i in range(3):
-            row = board[i]
-            player = row[0]  
-            if row[1] == player and row[2] == player:
-                return player  
-        
-        for i in range(3):
-            col = board[:, i]
-            player = col[0]  
-            if col[1] == player and col[2] == player:
-                return player  
-        
-        dia1 = [board[0][0], board[1][1], board[2][2]]
-        dia2 = [board[0][2], board[1][1], board[2][0]]
-        for dia in [dia1, dia2]:
-            player = dia[0]  
-            if dia[1] == player and dia[2] == player:
-                return player  
-        flatten = lambda l: [item for sublist in l for item in sublist]
-        if 0 in flatten(board):
-            return None  
+    def new_game(self, name):
+        id_game= len(self.games.keys())
+        if id_game not in self.games.keys():
+            self.games[id_game] = (str(name), GameBoard())
+            return id_game
         else:
-            return 0  
+            return None
 
+    def get_list(self):
+        out_put = []
+        for key, value in self.games.items():
+            if value[1].waiting_for_player:
+                dict = {}
+                dict['id'] = int(key)
+                dict['name'] = value[0]
+                out_put.append(dict)
+        return out_put
 
-if len(argv) != 2:
-    exit("The program expects to be called with one command-line argument:\n"
-         "./ttt.py 9001")
-PORT = argv[1]
-try:
-    PORT = int(PORT)
-except ValueError:
-    exit("The PORT number must be a valid integer.")
-
-server = ThreadedHTTPServer(('', PORT), TicTacToeHandler)  
-try:
-    print(f'Started httpserver on port {PORT}.')
-    server.serve_forever() 
-
-except KeyboardInterrupt:
-    print('^C received, shutting down the web server')
-    server.socket.close()
-
-    def play(self, params):
+    def get_game_by_id(self, id_game):
         try:
-            idx = int(params['game'][0])
-            player = int(params['player'][0])
-            row = int(params['x'][0])
-            column = int(params['y'][0])
-            game = TicTacToeHandler.games[idx]
+            return self.games[id_game][1]
+        except Exception:
+            return None
 
-            result = dict()
-            result['status'] = 'bad'  
-            result['message'] = 'Unknown state.'
-            if game['next'] != player:
-                result['message'] = f"It's not currently player {player}'s turn.'"
-            elif game['board'][row][column] != 0:
-                result['message'] = f"The required field is not blank."
-            elif row not in range(0, 2) or column not in range(0, 2):
-                result['message'] = "The given coordinates are out of the game board."
-            elif game['winner'] is not None:
-                result['message'] = "The game already has a winner."
+class GameBoard:
+
+    def __init__(self):
+        self.board = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+        self.next = 1
+        self.locked = False
+        self.winner = None
+        self.waiting_for_player = True
+
+    def lock_n_move(self, player, x, y):
+        if not self.locked:
+            self.locked = True
+            result = self.make_move(player, x, y)
+            self.locked = False
+            return result
+        else:
+            return False
+
+    def make_move(self, player, x, y):
+            if int(player) != self.next:
+                return False, "Next player should be " + str(self.next)
+            elif self.winner is not None:
+                return False, "Game is over"
             else:
-                result['status'] = 'ok'
-                game['board'][row][column] = player
-                game['next'] = 1 if player == 2 else 2 
-                game['winner'] = self.decide_winner(game['board'])
+                if int(x) > len(self.board[0]) - 1 or int(y) > len(self.board) - 1:
+                    return False, "Out of range"
+                else:
+                    if self.board[int(x)][int(y)] == 0:
+                        self.board[int(x)][int(y)] = int(player)
+                        if int(player) == 2:
+                            self.waiting_for_player = False
+                        if self.player_win_check(player):
+                            self.winner = int(player)
+                        elif not self.another_move_is_possible():
+                            self.winner = 0
+                        self.next = (int(player) %2) + 1
+                        return True, None
+                    else:
+                        return False, "Field is already taken"
 
-            self.send_response(HTTPStatus.OK)
-            self.send_header('Content-type', self.mimetype)
-            self.end_headers()
-            self.wfile.write(bytes(json.dumps(result), 'utf-8'))
-        except ValueError:
-            self.send_error("Some of the passed parameters aren't numeric.")
-        except TypeError:
-            self.send_error("Some of the required parameters for 'play' are missing.")
-        except (KeyError, IndexError):
-            self.send_error(HTTPStatus.BAD_REQUEST, "Entered an ID of a non-existent game.")
+    def player_win_check(self, player):
+        player = int(player)
+        for i in range(0, 3):
+            for j in range(0, 3):
+                if self.board[i][j] == player:
+                    if (self.board[i][0] == player and self.board[i][1] == player and self.board[i][2] == player) or (self.board[0][j] == player and self.board[1][j] == player and self.board[2][j] == player):
+                        return True
+        if(self.board[0][0] == player and self.board[1][1] == player and self.board[2][2] == player) or (self.board[0][2] == player and self.board[1][1] == player and self.board[2][0] == player):
+            return True
+        return False
+
+    def another_move_is_possible(self):
+        i = 0
+        j = 0
+        for i in range(0, 3):
+            for j in range(0, 3):
+                if self.board[i][j] == 0:
+                    return True
+        return False
+
+    def get_winner(self):
+        return self.winner
+
+    def get_status(self):
+        if self.winner is None:
+            return self.board, self.next
+        else:
+            return self.board, self.winner
 
 
+allGames = game_run()
 
+
+@asyncio.coroutine
+async def handle_start(request):
+    try:
+        name = request.query['name']
+    except Exception:
+        name = ''
+    js = {}
+    js['id'] = int(allGames.new_game(name))
+    return web.json_response(status=200, data=js)
+
+
+@asyncio.coroutine
+async def handle_status(request):
+    try:
+        id_game = request.query['game']
+    except Exception:
+        err = {}
+        err['error'] = 'request does not contain game parameter'
+        return web.json_response(status=404, data=err)
+    try:
+        int(id_game)
+    except Exception:
+        err = {}
+        err['error'] = 'cannot parse game id'
+        return web.json_response(status=400, data=err)
+
+    js = {}
+    game = allGames.get_game_by_id(int(id_game))
+
+    if game is None:
+        err = {}
+        err['error'] = 'No game with id ' + str(id_game)
+        return web.json_response(status=400, data=err)
+    if game.get_winner() is None:
+        js['board'], js['next'] = game.get_status()
+    else:
+        js['board'], js['winner'] = game.get_status()
+    return web.json_response(status=200, data=js)
+
+
+@asyncio.coroutine
+async def handle_play(request):
+    try:
+        id_game = request.query['game']
+        player = request.query['player']
+        x = request.query['x']
+        y = request.query['y']
+    except Exception:
+        err = {}
+        err['error'] = 'request does not contain game, player or coordinates parameters'
+        return web.json_response(status=400, data=err)
+    try:
+        int(id_game)
+        int(player)
+        int(x)
+        int(y)
+    except Exception:
+        err = {}
+        err['error'] = 'cannot parse game id, player or coordinates integers'
+        return web.json_response(status=400, data=err)
+
+    game = allGames.get_game_by_id(int(id_game))
+
+    if game is None:
+        err = {}
+        err['error'] = 'No game with id ' + str(id_game)
+        return web.json_response(status=400, data=err)
+    js = {}
+    success, message = game.make_move(player, int(x), int(y))
+    if success:
+        js['status'] = "ok"
+    else:
+        js['status'] = 'bad'
+        js['message'] = message
+    return web.json_response(status=200, data=js)
+
+
+@asyncio.coroutine
+async def handle_list(request):
+    list = allGames.get_list()
+    return web.json_response(status=200, data=list)
+
+
+def aio_server(port):
+    application = web.Application()
+    application.router.add_route('GET', '/start{tail:.*}', handle_start)
+    application.router.add_route('GET', '/status{tail:.*}', handle_status)
+    application.router.add_route('GET', '/play{tail:.*}', handle_play)
+    application.router.add_route('GET', '/list{tail:.*}', handle_list)
+    web.run_app(application, host='localhost', port=port)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) == 2:
+        aio_server(int(sys.argv[1]))
+    else:
+        print("Wrong number of arguments")

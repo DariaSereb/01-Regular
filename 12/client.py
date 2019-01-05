@@ -1,291 +1,157 @@
-#!/usr/bin/python3
-
-import sys
-import asyncio
-import aiohttp
-
-
-
-class GameInfo:
-    def __init__(self):
-        self.port = 9001
-        self.host = 'localhost'   
-        self.selected_game_id = None
-        self.selected_player = None
-        self.next_player = None
-        self.winner = None
-        self.board = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
-        self.player_waiting = False
-
-    def reset_game(self):
-        self.winner = None
-        self.next_player = None
-        self.player_waiting = False
-        self.selected_game_id = None
-        self.selected_player = None
+import json
+from sys import argv, stdin
+from urllib.request import Request, urlopen, urlretrieve
+from urllib.parse import urlencode, urljoin
+from time import sleep
 
 
-game_inf = GameInfo()
+def send_request(url, path, text):
+
+    encoded_text = urlencode(text)
+    req_url = urljoin(url, path)
 
 
-def run_f(task, *, loop=None):
-    if loop is None:
-        if sys.platform.startswith('win'):
-            loop = asyncio.ProactorEventLoop()
-            asyncio.set_event_loop(loop)
+    if encoded_text:
+        req_url = req_url + '?' + encoded_text
+
+    req = Request(req_url)
+
+    try:
+        res = urlopen(req)
+    except:
+        print('Something went wrong')
+    else:
+        try:
+            res_json = json.loads(res.read())
+        except:
+            print('Response is not a valid json')
         else:
-            loop = asyncio.get_event_loop()
-    return loop.run_until_complete(asyncio.ensure_future(task, loop=loop))
+            return res_json
 
+def play_game(url, game_id, player):
 
-def sync_wait(task, loop=None):
-    if loop is None:
-        if sys.platform.startswith('win'):
-            loop = asyncio.ProactorEventLoop()
-            asyncio.set_event_loop(loop)
+    full = False
+    while True:
+        res = send_request(url, 'status', {'game': game_id})
+        if not full:
+            full = res['full']
+
+        if 'winner' in res:
+            print_board(res['board'])
+            if res['winner'] == 0:
+                print("draw")
+            else:
+                if res['winner'] == player:
+                    print('you win')
+                else:
+                    print('you lose')
+            return
+
+        elif full and res['next'] == player:
+            print_board(res['board'])
+            print('your turn ({})'.format('x' if player == 1 else 'o'))
+
+            user_input = stdin.readline().rstrip('\n').strip()
+            if len(user_input.split()) != 2:
+                print("invalid input")
+                continue
+
+            x, y = tuple(user_input.split())
+            text = {
+                'game': game_id,
+                'player': player,
+                'x': x,
+                'y': y
+            }
+
+            play_res = send_request(url, 'play', text)
+
+            if play_res['status'] == 'bad':
+                print(play_res['message'])
+            else:
+                print_board(play_res['board'])
+                print("waiting for other player")
+
         else:
-            loop = asyncio.get_event_loop()
-    return loop.run_until_complete(task)
+            sleep(1)
 
 
-@asyncio.coroutine
-async def draw_board():
-    global game_inf
-    await get_status()
-    if game_inf.next_player != game_inf.selected_player:
-        if not game_inf.player_waiting:
-            print('waiting for other player')
-            game_inf.player_waiting = True
-    else:
-        game_inf.player_waiting = False
-    if len(game_inf.board) > 0:
-        for i in range(0, len(game_inf.board)):
-            for j in range(0, len(game_inf.board[0])):
-                if game_inf.board[i][j] == 1:
-                    print('x', end='')
-                elif game_inf.board[i][j] == 2:
-                    print('o', end='')
-                else:
-                    print('_', end='')
-            print(end='\n')
-        await asyncio.sleep(1)
+
+def print_board(board):
+    symbols = ['_', 'X', 'O']
+    for i, row in enumerate(board):
+        row_str = ''
+        for cell in row:
+            row_str += symbols[cell]
+        print(row_str)
 
 
-async def get_status():
-    global game_inf
-    result = await call_status()
-    if result is not None:
-        try:
-            game_inf.board = result['board']
-        except Exception:
-            pass
-        try:
-            game_inf.next_player = result['next']
-        except Exception:
-            pass
-        try:
-            game_inf.winner = result['winner']
-        except Exception:
-            pass
+if __name__ == '__main__':
 
+    play = True
+    url = argv[1]
+    port = argv[2]
+    if (not url.startswith('http://')
+        and not url.startswith('https://')):
+        url = 'http://' + url
 
-async def call_status():
-    global game_inf
-    url = 'http://' + game_inf.host + ':' + str(game_inf.port) + '/status?game=' + str(game_inf.selected_game_id)
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url=url) as resp:
-                try:
-                    result = await resp.json()
-                    return result
-                except Exception as e:
-                    return None
-        except Exception as e:
-            return None
+    url = url + ':' + port
 
+    while play:
+        game_list = send_request(url, 'list', {})
 
-@asyncio.coroutine
-async def join_to_game(input_id):
-    global game_inf
-    url = 'http://' + game_inf.host + ':' + str(game_inf.port) + '/status?game=' + str(input_id)
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url=url) as resp:
-                if resp.status == 200:
-                    game_inf.selected_game_id = input_id
-                    game_inf.selected_player = 2
-                try:
-                    json = await resp.json()
-                    error = json['error']
-                    return error
-                except Exception:
-                    pass
-                return None
-        except Exception as e:
-            game_inf.selected_player = None
-            game_inf.selected_game_id = None
+        game_ids = []
 
-            return None
+        if len(game_list['games']) > 0:
+            print('Available games:')
+            for game in game_list['games']:
+                print('{} {}'.format(game['id'], game['name']))
+                game_ids.append(int(game['id']))
+                print('Type game id to join or "new game_name" to start new game')
 
+        else:
+            print('There are no game available on the server. Type "new game_name" to start new game')
 
-async def start_new_game(name):
-    global game_inf
-    json = await start_game_request(name)
-    game_inf.selected_player = 1
-    game_inf.selected_game_id = json['id']
+        user_input = stdin.readline().rstrip('\n')
 
-
-async def start_game_request(name):
-    global game_inf
-    url = 'http://' + game_inf.host + ':' + str(game_inf.port) + '/start?name=' + str(name)
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url=url) as resp:
-                if resp.status == 200:
-                    try:
-                        return await resp.json()
-                    except:
-                        pass
-        except Exception as e:
-            print(e)
-
-
-async def get_games():
-    global game_inf
-    url = 'http://' + game_inf.host + ':' + str(game_inf.port) + '/list'
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url=url) as resp:
-                return await resp.json()
-        except Exception as e:
-            print(e)
-            return []
-
-
-async def make_move(x, y):
-    global game_inf
-    json = await make_move_request(x, y)
-    if json is not None:
-        if not json['status'] == 'ok':
-            print(json['message'])
-
-
-async def make_move_request(x, y):
-    global game_inf
-    url = 'http://' + game_inf.host + ':' + str(game_inf.port) + '/play?game=' + str(game_inf.selected_game_id) + '&player=' + str(game_inf.selected_player) + '&x=' + str(x) + '&y=' + str(y)
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url=url) as resp:
-                if resp.status == 200:
-                    try:
-                        return await resp.json()
-                    except:
-                        pass
-        except Exception as e:
-            print(e)
-
-
-async def text_loop():
-    global game_inf
-    while game_inf.selected_game_id is None:
-        try:
-            games = await get_games()
-            print('Type new to start a new game or type id of selected game to join the game')
-            if len(games) > 0:
-                print('Select game to join:')
-                for item in games:
-                    print('ID: ' + str(item['id']) + ' - ' + item['name'])
+        if user_input.startswith('new'):
+            name = user_input[3:].strip()
+            path = 'start'
+            if name:
+                text = {
+                    'name': name
+                }
             else:
-                print('no games to join')
-            input_string = input()
-            input_array = input_string.split(' ')
-            if input_array[0] == 'new':
-                if len(input_array) > 1:
-                    name = ' '.join('%s' % item for item in input_array[1:])
-                    await start_new_game(name)
-                else:
-                    await start_new_game('')
+                text = {}
+
+            res = send_request(url, path, text)
+
+            if res['status'] == 'bad':
+                print(res['message'])
             else:
-                if len([item for item in games if str(item['id']) == input_string]) > 0:
-                    resp = await join_to_game(input_string)
-                    if resp is not None:
-                        print(resp)
-                else:
-                    print('This game is not listed')
-            while game_inf.selected_game_id is not None:
-                try:
-                    await draw_board()
-                    if game_inf.winner is not None:
-                        if game_inf.winner != 0:
-                            if game_inf.selected_player == game_inf.winner:
-                                print('you win')
-                            else:
-                                print("you lose")
-                        else:
-                            print('draw')
-                        game_inf.reset_game()
-                    elif game_inf.next_player == game_inf.selected_player:
-                        if game_inf.selected_player == 1:
-                            game_symbol = 'x'
-                        else:
-                            game_symbol = 'o'
-                        input_string = input('your turn (' + game_symbol + ')')
-                        array = input_string.split(' ')
-                        if len(array) == 2:
-                            await make_move(array[0], array[1])
-                        else:
-                            print('cannot read x and y. Write two coordinates separated by space.')
-                    await asyncio.sleep(1)
-                except KeyboardInterrupt:
-                    exit(0)
-        except KeyboardInterrupt:
-            exit(0)
+                print('Game started, waiting for someone to join...')
+                play_game(url, res['id'], 1)
 
-def text_ui():
-    if sys.platform.startswith('win'):
-        loop = asyncio.ProactorEventLoop()
-        asyncio.set_event_loop(loop)
-    else:
-        loop = asyncio.get_event_loop()
-    loop.create_task(text_loop())
-    loop.run_forever()
+        elif int(user_input) in game_ids:
 
+            path = 'join'
+            text = {
+                'game': int(user_input)
+            }
 
-class InputBox:
-    def __init__(self, x, y, w, h, text=''):
-        self.text = text
-        self.active = False
+            res = send_request(url, path, text)
 
-    def draw(self, screen):
-        screen.blit(self.txt_surface, (self.rect.x+5, self.rect.y+5))
+            if res['status'] == 'bad':
+                print(res['message'])
+            else:
+                print('Joined game {}, waiting for other player...'.format(int(user_input)))
+                play_game(url, res['id'], 2)
 
+        else:
+            print('Unknown game id: {}'.format(user_input))
 
-def draw_symbol(board, boardRow, boardCol, player):
-    centerX = (boardCol * 100) + 50
-    centerY = (boardRow * 100) + 50
+        print('Play again? [Y|n]')
+        user_input = stdin.readline().rstrip('\n')
 
-def position_on_board(mouseX, mouseY):
-    if mouseY < 100:
-        row = 0
-    elif mouseY < 200:
-        row = 1
-    else:
-        row = 2
-
-    if mouseX < 100:
-        col = 0
-    elif mouseX < 200:
-        col = 1
-    else:
-        col = 2
-
-    return row, col
-
-if __name__ == "__main__":
-    if len(sys.argv) == 3:
-        game_inf.host = (sys.argv[1])
-        game_inf.port = (sys.argv[2])
-        text_ui()
-
-    else:
-        print("Wrong number of arguments")
+        if user_input not in ['', 'y', 'Y']:
+            play = False

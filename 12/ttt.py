@@ -1,206 +1,126 @@
-#!/usr/bin/python3
+import json
+import urllib
+from sys import argv
+from game import Game
+from socketserver import ThreadingMixIn
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
-import sys
-import asyncio
-from aiohttp import web
+games = {}
+max_id = 0
 
+class TicTacToeHandler(BaseHTTPRequestHandler):
 
-class game_run:
+    def __init__(self, *args, **kwargs):
+        super(TicTacToeHandler, self).__init__(*args, **kwargs)
 
-    def __init__(self):
-        self.games = {}
+    def do_GET(self):
 
-    def new_game(self, name):
-        id_game= len(self.games.keys())
-        if id_game not in self.games.keys():
-            self.games[id_game] = (str(name), GameBoard())
-            return id_game
+        global games
+        global max_id
+
+        parsed_url = urllib.parse.urlparse(self.path)
+        r_params = urllib.parse.parse_qs(parsed_url.query)
+        r_path = parsed_url.path.strip('/')
+        r_json = {}
+
+        if r_path == 'start':
+
+            name = r_params['name'][0] if 'name' in r_params else ''
+
+            game = Game(name)
+            games[max_id] = game
+            r_json['status'] = 'ok'
+            r_json['message'] = 'ok'
+            r_json['id'] = max_id
+            max_id += 1
+
         else:
-            return None
 
-    def get_list(self):
-        out_put = []
-        for key, value in self.games.items():
-            if value[1].waiting_for_player:
-                dict = {}
-                dict['id'] = int(key)
-                dict['name'] = value[0]
-                out_put.append(dict)
-        return out_put
+            if r_path == 'list':
+                game_list = []
 
-    def get_game_by_id(self, id_game):
-        try:
-            return self.games[id_game][1]
-        except Exception:
-            return None
+                for game_id in games:
+                    game = games[game_id]
 
-class GameBoard:
+                    if not game.full:
+                        game_list.append({
+                            'id': game_id,
+                            'name': game.name
+                        });
 
-    def __init__(self):
-        self.board = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
-        self.next = 1
-        self.locked = False
-        self.winner = None
-        self.waiting_for_player = True
+                r_json['games'] = game_list
 
-    def lock_n_move(self, player, x, y):
-        if not self.locked:
-            self.locked = True
-            result = self.make_move(player, x, y)
-            self.locked = False
-            return result
-        else:
-            return False
+            elif 'game' not in r_params:
 
-    def make_move(self, player, x, y):
-            if int(player) != self.next:
-                return False, "Next player should be " + str(self.next)
-            elif self.winner is not None:
-                return False, "Game is over"
-            else:
-                if int(x) > len(self.board[0]) - 1 or int(y) > len(self.board) - 1:
-                    return False, "Out of range"
+                self.send_error(400, 'Bad Request')
+
+            elif int(r_params['game'][0]) not in games:
+
+                r_json['status'] = 'bad'
+                r_json['message'] = 'Game with id {} does not exists'.format(r_params['game'][0])
+
+            elif r_path == 'status':
+
+                game_id = int(r_params['game'][0])
+                game = games[game_id]
+
+                if game.status is None:
+                    r_json['board'] = game.board
+                    r_json['full'] = game.full
+                    r_json['next'] = game.next
                 else:
-                    if self.board[int(x)][int(y)] == 0:
-                        self.board[int(x)][int(y)] = int(player)
-                        if int(player) == 2:
-                            self.waiting_for_player = False
-                        if self.player_win_check(player):
-                            self.winner = int(player)
-                        elif not self.another_move_is_possible():
-                            self.winner = 0
-                        self.next = (int(player) %2) + 1
-                        return True, None
-                    else:
-                        return False, "Field is already taken"
+                    r_json['board'] = game.board
+                    r_json['winner'] = game.status
 
-    def player_win_check(self, player):
-        player = int(player)
-        for i in range(0, 3):
-            for j in range(0, 3):
-                if self.board[i][j] == player:
-                    if (self.board[i][0] == player and self.board[i][1] == player and self.board[i][2] == player) or (self.board[0][j] == player and self.board[1][j] == player and self.board[2][j] == player):
-                        return True
-        if(self.board[0][0] == player and self.board[1][1] == player and self.board[2][2] == player) or (self.board[0][2] == player and self.board[1][1] == player and self.board[2][0] == player):
-            return True
-        return False
+            elif r_path == 'play':
 
-    def another_move_is_possible(self):
-        i = 0
-        j = 0
-        for i in range(0, 3):
-            for j in range(0, 3):
-                if self.board[i][j] == 0:
-                    return True
-        return False
+                game_id = int(r_params['game'][0])
+                player = int(r_params['player'][0])
+                x = int(r_params['x'][0])
+                y = int(r_params['y'][0])
 
-    def get_winner(self):
-        return self.winner
+                game = games[game_id]
+                status, message = game.play(player, x, y)
 
-    def get_status(self):
-        if self.winner is None:
-            return self.board, self.next
-        else:
-            return self.board, self.winner
+                r_json['status'] = status
+                r_json['message'] = message
+                r_json['board'] = game.board
 
+            elif r_path == 'join':
 
-allGames = game_run()
+                game_id = int(r_params['game'][0])
 
+                if games[game_id].full:
+                    r_json['status'] = 'bad'
+                    r_json['message'] = 'Game with id {} is already full'.format(game_id)
 
-@asyncio.coroutine
-async def handle_start(request):
-    try:
-        name = request.query['name']
-    except Exception:
-        name = ''
-    js = {}
-    js['id'] = int(allGames.new_game(name))
-    return web.json_response(status=200, data=js)
+                else:
+                    games[game_id].full = True
+                    r_json = {
+                        'status': 'ok',
+                        'message': 'ok',
+                        'id': game_id
+                    }
+
+            else:
+                self.send_error(404, 'Not Found')
+
+        r_content = bytes(json.dumps(r_json,
+                                       indent=4,
+                                       sort_keys=False,
+                                       ensure_ascii=False), 'utf-8')
+
+        self.send_response(200, 'OK')
+        self.send_header('Connection', 'close')
+        self.send_header('Content-Type', 'text/json; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(r_content)
 
 
-@asyncio.coroutine
-async def handle_status(request):
-    try:
-        id_game = request.query['game']
-    except Exception:
-        err = {}
-        err['error'] = 'request does not contain game parameter'
-        return web.json_response(status=404, data=err)
-    try:
-        int(id_game)
-    except Exception:
-        err = {}
-        err['error'] = 'cannot parse game id'
-        return web.json_response(status=400, data=err)
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    """handle requests """
 
-    js = {}
-    game = allGames.get_game_by_id(int(id_game))
-
-    if game is None:
-        err = {}
-        err['error'] = 'No game with id ' + str(id_game)
-        return web.json_response(status=400, data=err)
-    if game.get_winner() is None:
-        js['board'], js['next'] = game.get_status()
-    else:
-        js['board'], js['winner'] = game.get_status()
-    return web.json_response(status=200, data=js)
-
-
-@asyncio.coroutine
-async def handle_play(request):
-    try:
-        id_game = request.query['game']
-        player = request.query['player']
-        x = request.query['x']
-        y = request.query['y']
-    except Exception:
-        err = {}
-        err['error'] = 'request does not contain game, player or coordinates parameters'
-        return web.json_response(status=400, data=err)
-    try:
-        int(id_game)
-        int(player)
-        int(x)
-        int(y)
-    except Exception:
-        err = {}
-        err['error'] = 'cannot parse game id, player or coordinates integers'
-        return web.json_response(status=400, data=err)
-
-    game = allGames.get_game_by_id(int(id_game))
-
-    if game is None:
-        err = {}
-        err['error'] = 'No game with id ' + str(id_game)
-        return web.json_response(status=400, data=err)
-    js = {}
-    success, message = game.make_move(player, int(x), int(y))
-    if success:
-        js['status'] = "ok"
-    else:
-        js['status'] = 'bad'
-        js['message'] = message
-    return web.json_response(status=200, data=js)
-
-
-@asyncio.coroutine
-async def handle_list(request):
-    list = allGames.get_list()
-    return web.json_response(status=200, data=list)
-
-
-def aio_server(port):
-    application = web.Application()
-    application.router.add_route('GET', '/start{tail:.*}', handle_start)
-    application.router.add_route('GET', '/status{tail:.*}', handle_status)
-    application.router.add_route('GET', '/play{tail:.*}', handle_play)
-    application.router.add_route('GET', '/list{tail:.*}', handle_list)
-    web.run_app(application, host='localhost', port=port)
-
-
-if __name__ == "__main__":
-    if len(sys.argv) == 2:
-        aio_server(int(sys.argv[1]))
-    else:
-        print("Wrong number of arguments")
+if __name__ == '__main__':
+    port = int(argv[1])
+    httpd = ThreadedHTTPServer(('', port), TicTacToeHandler)
+    httpd.serve_forever()

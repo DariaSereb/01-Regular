@@ -1,9 +1,11 @@
-from sys import argv
+import sys
 import scorelib
 
 if __name__ == '__main__':
-    filename = argv[1]
-    prints = scorelib.load(filename)
-    for p in prints:
-        p.format()
+    if len(sys.argv) !=2:
+        print("Wrong number of arguments!")
+    else:
+        prints = scorelib.load(sys.argv[1])
+        for p in prints:
+            p.format()
 print()
